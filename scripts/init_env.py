@@ -1,13 +1,14 @@
 """Genera el archivo .env a partir de .env.example con contraseñas aleatorias.
 
-Uso (desde la raíz del repositorio):
-    python scripts/init_env.py            # crea .env si no existe
-    python scripts/init_env.py --force    # lo reemplaza (las contraseñas de un volumen
-                                          # de PostgreSQL ya inicializado dejan de coincidir)
+Se ejecuta dentro de Docker, sin Python en la máquina anfitriona (desde la raíz del repositorio):
+    docker compose -f compose.setup.yml run --rm init-env            # crea .env si no existe
+    docker compose -f compose.setup.yml run --rm init-env --force    # lo reemplaza
+Al reemplazarlo, las contraseñas de un volumen de PostgreSQL ya inicializado dejan de coincidir.
 Solo usa la biblioteca estándar.
 """
 
 import argparse
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -52,14 +53,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    if TARGET_FILE.exists() and not args.force:
+    replacing = TARGET_FILE.exists()
+    if replacing and not args.force:
         print(f"{TARGET_FILE.name} ya existe; usa --force para reemplazarlo.", file=sys.stderr)
         return 1
     example_lines = EXAMPLE_FILE.read_text(encoding="utf-8").splitlines()
     TARGET_FILE.write_text("\n".join(render_env(example_lines)) + "\n", encoding="utf-8")
     TARGET_FILE.chmod(0o600)
+    give_ownership_to_repository_owner(TARGET_FILE)
     print(f"{TARGET_FILE.name} generado con contraseñas aleatorias.")
+    if replacing:
+        print(
+            "Aviso: si PostgreSQL ya se inicializó, recrea su volumen para aplicar las nuevas "
+            "contraseñas (se borran los datos): docker compose down --volumes",
+            file=sys.stderr,
+        )
     return 0
+
+
+def give_ownership_to_repository_owner(path: Path) -> None:
+    # Dentro de un contenedor el script corre como root; en Linux el .env quedaría ilegible
+    # para el usuario que ejecuta `docker compose`. Se asigna al dueño del repositorio.
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return
+    owner = REPO_ROOT.stat()
+    os.chown(path, owner.st_uid, owner.st_gid)
 
 
 if __name__ == "__main__":

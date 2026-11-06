@@ -1,0 +1,20 @@
+# Preparación del entorno sin instalar Python en la máquina anfitriona.
+# Uso: docker compose -f compose.setup.yml run --rm init-env [--force]
+# Es un archivo aparte porque docker-compose.yml exige un .env completo para interpolar variables.
+name: plataforma-tiendas-setup
+
+services:
+  init-env:
+    image: python:3.13-slim
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    entrypoint: ["python", "-I", "scripts/init_env.py"]
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN         # entregar el .env al dueño del repositorio (Linux)
+      - DAC_OVERRIDE  # escribir en la carpeta del repositorio montada
