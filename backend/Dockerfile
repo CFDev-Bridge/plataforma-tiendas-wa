@@ -24,10 +24,14 @@ COPY app ./app
 COPY tests ./tests
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 USER app
+# Cachés en /tmp: el contenedor de pruebas corre con sistema de archivos de solo lectura.
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-CMD ["pytest", "-m", "integration", "-p", "no:cacheprovider"]
+    PYTHONUNBUFFERED=1 \
+    RUFF_CACHE_DIR=/tmp/ruff-cache \
+    MYPY_CACHE_DIR=/tmp/mypy-cache \
+    PYTEST_ADDOPTS="-p no:cacheprovider"
+CMD ["pytest", "-m", "integration"]
 
 # Imagen de ejecución mínima, sin herramientas de construcción y con usuario sin privilegios.
 FROM ${PYTHON_IMAGE} AS runtime

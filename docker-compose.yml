@@ -115,5 +115,28 @@ services:
       postgres:
         condition: service_healthy
 
+  backend-checks:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    <<: *hardening
+    network_mode: none
+    tmpfs:
+      - /tmp
+    command: ["sh", "-c", "ruff format --check . && ruff check . && mypy app tests && pytest"]
+
+  frontend-checks:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      target: check
+    # Sin read_only: Angular y Vitest escriben cachés dentro del proyecto del contenedor.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    network_mode: none
+
 volumes:
   postgres-data:
