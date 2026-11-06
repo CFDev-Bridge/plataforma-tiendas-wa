@@ -1,0 +1,24 @@
+<main class="shell">
+  <header>
+    <h1>Panel de tiendas</h1>
+    <p class="subtitle">
+      Plataforma multi-tenant con asistente de WhatsApp · Entorno de demostración
+    </p>
+  </header>
+
+  <section class="status" aria-labelledby="status-title">
+    <h2 id="status-title">Estado del sistema</h2>
+    <p>
+      API y base de datos:
+      <span
+        class="badge"
+        role="status"
+        [class.badge--ok]="apiStatus() === 'ok'"
+        [class.badge--unavailable]="apiStatus() === 'unavailable'"
+        >{{ statusLabel() }}</span
+      >
+    </p>
+  </section>
+
+  <router-outlet />
+</main>
