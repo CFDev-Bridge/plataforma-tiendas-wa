@@ -76,6 +76,27 @@ Leerlo antes de cualquier cambio de diseño.
 - Cada caso de uso nuevo lleva pruebas unitarias; cada regla de aislamiento o seguridad lleva
   prueba de integración contra PostgreSQL real.
 
+## Comandos
+
+- Levantar todo: `docker compose up -d --build --wait` (requiere `.env`; generarlo con
+  `python scripts/init_env.py`).
+- Integración contra PostgreSQL real: `docker compose --profile test run --rm --build backend-tests`.
+- Backend (en `backend/`): `uv run ruff format --check . && uv run ruff check . && uv run mypy app tests && uv run pytest`.
+- Panel (en `frontend/`): `npm run format:check && npm run lint && npm run test:ci && npm run build`.
+- Escaneo de secretos: `docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 git /repo --redact`.
+- Las pruebas de integración llevan `@pytest.mark.integration`; `pytest` sin argumentos las excluye.
+
+## Convenciones del repositorio
+
+- Backend por módulos en `backend/app/modules/<módulo>/` con `router.py`, `service.py` y, cuando
+  haya persistencia, `repository.py`. Infraestructura transversal en `backend/app/core/`.
+- La API se crea con `create_app(settings)`; las pruebas sustituyen dependencias con
+  `app.dependency_overrides`, nunca parcheando módulos.
+- Los roles de BD y el esquema `app` se crean en `infra/postgres/init/`; tablas, RLS y permisos van
+  en migraciones Alembic (desde la Fase 1).
+- Panel: servicios en `frontend/src/app/core/`, funcionalidades en `frontend/src/app/features/`.
+  ESLint prohíbe `innerHTML`, `outerHTML` y `bypassSecurityTrust*`.
+
 ## Pendientes que no deben asumirse como definitivos
 
 - Tarifa vigente de WhatsApp para Ecuador y cambios anunciados para 2026.

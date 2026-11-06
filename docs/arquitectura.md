@@ -1,6 +1,6 @@
 # Arquitectura — Plataforma multi-tenant de tiendas con asistente de IA en WhatsApp
 
-Estado: **propuesta pendiente de aprobación** · Fecha: 2026-11-06
+Estado: **aprobada** (2026-11-06) · Fase en curso: ver §13
 
 ## 1. Objetivo
 
@@ -29,6 +29,14 @@ Limitaciones conocidas:
 - El número de prueba no sirve para clientes reales ni para validar Coexistence.
 - Solo existe un número de prueba: la segunda tienda se simula por configuración (ver §11, punto 1).
 
+### 2.1 Decisiones aprobadas (2026-11-06)
+
+| Decisión | Detalle |
+|---|---|
+| Conexión simulada | Se acepta `connection_type = SIMULATED`, habilitado solo con `APP_ENV=demo`, para la segunda tienda (§11, punto 1) |
+| Cupo del plan | Se mide por **ambas** métricas: conversaciones atendidas por IA y tokens de IA. Cada plan define los dos límites; las alertas del 80 % y 100 % se emiten por la métrica que llegue primero |
+| Ejecución de la demo | Todo corre en Docker en la máquina del dueño del proyecto (no en la nube) |
+
 ## 3. Decisiones de negocio
 
 - Cada tienda usa su propio número de WhatsApp.
@@ -38,7 +46,7 @@ Limitaciones conocidas:
 - Vía principal futura: Embedded Signup como Tech Provider.
 - Vía temporal de piloto: conexión manual.
 - Ambas detrás de la interfaz `WhatsAppConnection`, con `connection_type` `EMBEDDED_SIGNUP` o
-  `MANUAL`.
+  `MANUAL`. En la demo se añade `SIMULATED` (§2.1).
 - Coexistence requiere Embedded Signup y la app WhatsApp Business; no funciona pegando un token.
 - El asistente se limita a ventas, soporte y citas de cada negocio. Nunca funciona como IA de
   propósito general (las políticas de WhatsApp Business lo prohíben cuando la IA es la función
@@ -281,7 +289,7 @@ erDiagram
 | `tenants` | `id, slug, name, status, timezone, currency, enabled_modules text[]` | `slug` UNIQUE; módulos ⊆ {CATALOG, ORDERS, APPOINTMENTS} |
 | `users` | `id, email citext, password_hash, is_platform_admin, status, last_login_at` | `email` UNIQUE |
 | `tenant_memberships` | `tenant_id, user_id, role` | UNIQUE `(tenant_id, user_id)`; `role` ∈ {OWNER, STORE_ADMIN, AGENT} |
-| `plans` | `id, code, name, price_monthly, currency, quota_metric, quota_limit, allowed_modules, active` | `quota_metric` ∈ {AI_CONVERSATIONS, AI_TOKENS} |
+| `plans` | `id, code, name, price_monthly, currency, ai_conversation_limit, ai_token_limit, allowed_modules, active` | Ambos límites > 0 (§2.1) |
 | `webhook_events` | `id, tenant_id NULL, phone_number_id, event_kind, dedup_key, payload jsonb, status, attempts, next_attempt_at, locked_at, last_error_code, received_at` | `dedup_key` UNIQUE; es la cola |
 | `job_runs` | `job_name, run_date, status, started_at, finished_at` | UNIQUE `(job_name, run_date)` |
 
@@ -289,7 +297,7 @@ erDiagram
 
 | Tabla | Columnas clave | Restricciones |
 |---|---|---|
-| `whatsapp_connections` | `id, tenant_id, connection_type, waba_id, phone_number_id, display_phone_number, token_ciphertext, token_nonce, key_id, status, is_coexistence, token_rotated_at` | `phone_number_id` UNIQUE global; una conexión `ACTIVE` por tenant |
+| `whatsapp_connections` | `id, tenant_id, connection_type (EMBEDDED_SIGNUP, MANUAL, SIMULATED), waba_id, phone_number_id, display_phone_number, token_ciphertext, token_nonce, key_id, status, is_coexistence, token_rotated_at` | `phone_number_id` UNIQUE global; una conexión `ACTIVE` por tenant |
 | `assistant_profiles` | `tenant_id, business_summary, tone, allowed_topics, handoff_rules, provider, model, prompt_version, echo_pause_minutes` | Una por tenant |
 | `contacts` | `id, tenant_id, wa_id, wa_id_hash, profile_name, opted_in_at` | UNIQUE `(tenant_id, wa_id)` |
 | `conversations` | `id, tenant_id, contact_id, connection_id, mode, assigned_agent_id, paused_until, last_customer_message_at, status, version` | `mode` ∈ {AI, HUMAN}; una abierta por contacto |
@@ -305,7 +313,7 @@ erDiagram
 | `message_templates` | `id, tenant_id, name, language, category, meta_status, components jsonb` | UNIQUE `(tenant_id, name, language)` |
 | `subscriptions` | `id, tenant_id, plan_id, status, current_period_start, current_period_end, grace_days, suspended_at` | `status` ∈ {ACTIVE, EXPIRING, GRACE, SUSPENDED}; una vigente por tenant |
 | `payments` | `id, tenant_id, subscription_id, amount, currency, paid_at, method, reference, recorded_by` | Registro manual en la demo |
-| `usage_counters` | `tenant_id, period_start, metric, used, limit_snapshot` | UNIQUE `(tenant_id, period_start, metric)`; incremento atómico |
+| `usage_counters` | `tenant_id, period_start, metric, used, limit_snapshot` | `metric` ∈ {AI_CONVERSATIONS, AI_TOKENS}; UNIQUE `(tenant_id, period_start, metric)`; incremento atómico |
 | `billing_alerts` | `id, tenant_id, subscription_id, alert_kind, period_key, channel, status, sent_at` | UNIQUE `(tenant_id, alert_kind, period_key, channel)` |
 | `support_access_grants` | `id, tenant_id, platform_admin_id, reason, approved_by, expires_at, revoked_at` | `expires_at` obligatorio y acotado |
 | `audit_logs` | `id, tenant_id NULL, actor_user_id, actor_kind, action, entity, entity_id, metadata jsonb` | Solo inserción; sin PII en `metadata` |
@@ -370,7 +378,8 @@ stateDiagram-v2
 ```
 
 - Alertas a 7, 3 y 1 días por panel, correo y plantilla de WhatsApp.
-- Cupo por plan (`AI_CONVERSATIONS` o `AI_TOKENS`) con alertas al 80 % y 100 %.
+- Cupo por plan con dos límites, `AI_CONVERSATIONS` y `AI_TOKENS`, y alertas al 80 % y 100 % de
+  cada uno.
 - Job diario idempotente: clave `(job_name, run_date)` en `job_runs` y
   `UNIQUE (tenant_id, alert_kind, period_key, channel)` en `billing_alerts`.
 - Al suspender: la IA se detiene, los mensajes entrantes se siguen guardando y los datos del
@@ -494,7 +503,7 @@ Cada fase termina con pruebas en verde, actualización de la documentación y co
 
 | Fase | Entregable | Pruebas clave |
 |---|---|---|
-| 0. Base | Repo, Docker Compose (Postgres, Mailpit), FastAPI mínimo con `/health`, Angular vacío, ruff, mypy, pytest, `.env.example`, escaneo de secretos | Arranque de servicios, lint y tipos |
+| 0. Base ✅ | Repo, Docker Compose (Postgres, Mailpit), FastAPI mínimo con `/health`, Angular vacío, ruff, mypy, pytest, `.env.example`, escaneo de secretos, roles de BD y esquema `app` | Arranque de servicios, lint, tipos, privilegios de roles |
 | 1. Datos y aislamiento | Migraciones de todas las tablas, roles de BD, RLS forzado, triggers de solo inserción, seed de dos tiendas | Un tenant no ve ni referencia datos de otro; sin contexto no hay filas; `UPDATE` en tablas de solo inserción falla |
 | 2. Identidad | Login con Argon2id, cookie de sesión, CSRF, memberships, matriz de permisos, auditoría | Cada rol accede solo a lo permitido; intentos denegados se auditan |
 | 3. Ingesta de WhatsApp | Verificación GET del webhook, firma, división por ítem, deduplicación, cola SKIP LOCKED, estados fuera de orden, simulador | Firma inválida → 401; duplicado no se procesa dos veces; estados en cualquier orden convergen |
@@ -505,6 +514,19 @@ Cada fase termina con pruebas en verde, actualización de la documentación y co
 | 8. Panel Angular | Bandeja con toma de control, catálogo, agenda, pedidos, asistente, conexión de WhatsApp, suscripción, bitácora, administración de plataforma | Pruebas de componentes, guards por rol, sin `innerHTML` de mensajes |
 | 9. Embedded Signup | Implementación detrás de `WhatsAppConnection`, desactivada por configuración | Contratos contra respuestas simuladas de Graph API |
 | 10. Demo integral | Runbook, retención, prueba de punta a punta con el número de prueba vía túnel | Guion de demo ejecutado con dos tiendas |
+
+### 13.1 Estado de la Fase 0
+
+- PostgreSQL 17, Python 3.13 con FastAPI, Angular 22 (standalone, `strict`, pruebas con Vitest),
+  nginx sin privilegios como servidor del panel y proxy hacia la API.
+- Los roles `app_migrator`, `app_runtime` y `app_platform` y el esquema `app` se crean al
+  inicializar el volumen (`infra/postgres/init/01-create-roles.sh`). Se adelantó desde la Fase 1
+  para que la API nunca se conecte con el superusuario. Las políticas RLS y los permisos sobre
+  tablas siguen en la Fase 1.
+- El panel aplica una CSP sin `unsafe-inline`: nginx reemplaza el nonce de estilos en cada
+  petición y el build desactiva el CSS crítico en línea.
+- CI en GitHub Actions: lint, tipos, pruebas unitarias, pruebas de integración con Docker Compose y
+  escaneo de secretos con gitleaks. Acciones fijadas por SHA.
 
 ## 14. Riesgos
 
