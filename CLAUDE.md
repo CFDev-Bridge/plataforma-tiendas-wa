@@ -78,12 +78,17 @@ Leerlo antes de cualquier cambio de diseño.
 
 ## Comandos
 
-- Levantar todo: `docker compose up -d --build --wait` (requiere `.env`; generarlo con
-  `python scripts/init_env.py`).
-- Integración contra PostgreSQL real: `docker compose --profile test run --rm --build backend-tests`.
-- Backend (en `backend/`): `uv run ruff format --check . && uv run ruff check . && uv run mypy app tests && uv run pytest`.
-- Panel (en `frontend/`): `npm run format:check && npm run lint && npm run test:ci && npm run build`.
-- Escaneo de secretos: `docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 git /repo --redact`.
+El usuario solo tiene Docker: todo comando que se le indique debe correr en contenedores.
+
+- Generar `.env`: `docker compose -f compose.setup.yml run --rm init-env` (`--force` para reemplazar;
+  luego `docker compose down --volumes`, porque los roles se crean al inicializar el volumen).
+- Levantar todo: `docker compose up -d --build --wait`.
+- Backend, formato, lint, tipos y unitarias: `docker compose --profile test run --rm --build backend-checks`.
+- Backend, integración contra PostgreSQL real: `docker compose --profile test run --rm --build backend-tests`.
+- Panel, formato, lint y pruebas: `docker compose --profile test run --rm --build frontend-checks`.
+- Escaneo de secretos: `docker run --rm -v "${PWD}:/repo:ro" zricethezav/gitleaks:v8.30.1 git /repo --redact`.
+- Fuera de Docker (solo desarrollo): en `backend/`, `uv run ruff format --check . && uv run ruff check . && uv run mypy app tests && uv run pytest`;
+  en `frontend/`, `npm run format:check && npm run lint && npm run test:ci && npm run build`.
 - Las pruebas de integración llevan `@pytest.mark.integration`; `pytest` sin argumentos las excluye.
 
 ## Convenciones del repositorio

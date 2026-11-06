@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: python3 scripts/init_env.py
+      - run: docker compose -f compose.setup.yml run --rm init-env
       - run: docker compose --profile test build
       - run: docker compose up -d --wait
       - run: curl --fail --silent --show-error http://127.0.0.1:8080/health/ready
