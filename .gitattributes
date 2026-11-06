@@ -1,0 +1,6 @@
+# Normaliza finales de línea: los scripts de shell deben llegar con LF a los contenedores
+# aunque el repositorio se clone en Windows.
+* text=auto eol=lf
+*.sh text eol=lf
+*.ico binary
+*.png binary
